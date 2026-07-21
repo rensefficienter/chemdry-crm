@@ -211,6 +211,7 @@ textarea.body{min-height:280px;resize:vertical;line-height:1.6;font-size:13.5px}
   </div>
   <div class="tabs">
     <button class="tab on" data-view="work">E-mail versturen</button>
+    <button class="tab" data-view="tpl">Sjablonen</button>
     <button class="tab" data-view="log">Logboek</button>
   </div>
   <div class="right">
@@ -314,6 +315,17 @@ textarea.body{min-height:280px;resize:vertical;line-height:1.6;font-size:13.5px}
       <div class="card-h"><h2>Verzonden &amp; activiteit</h2><span style="margin-left:auto;font-size:12px;color:var(--ink-faint)" id="logCount"></span></div>
       <div id="logList"></div>
     </div>
+  </div>
+</div>
+
+<!-- TEMPLATES VIEW -->
+<div id="tplView" class="hidden">
+  <div class="ws" style="padding-top:24px">
+    <div class="card">
+      <div class="card-h"><h2>Sjablonen beheren</h2><button class="btn primary" id="newTplBtn2" style="margin-left:auto;padding:8px 14px">+ Nieuw sjabloon</button></div>
+      <div id="tplList"></div>
+    </div>
+    <div class="hint">Hier beheer je de e-mailsjablonen. Ze verschijnen bij "E-mail versturen" als knop om te kiezen. Gebruik plaatshouders zoals <b>{aanhef}</b> en <b>{bedrijf_of_naam}</b>, die worden per contact automatisch ingevuld.</div>
   </div>
 </div>
 
@@ -643,8 +655,15 @@ async function loadTemplates(){
 }
 function renderTpls(){
   $('#tpls').innerHTML=templates.map(t=>
-    `<button class="tpl ${String(t.id)===String(currentTpl)?'on':''}" data-tpl="${t.id}"><span class="dot"></span>${esc(t.label)}<span class="tpl-edit" data-edit="${t.id}" title="Bewerken">&#9998;</span></button>`).join('')+
-    `<button class="tpl tpl-new" id="newTplBtn">+ Nieuw sjabloon</button>`;
+    `<button class="tpl ${String(t.id)===String(currentTpl)?'on':''}" data-tpl="${t.id}"><span class="dot"></span>${esc(t.label)}</button>`).join('')||
+    '<span class="lbl-none" style="padding:4px">Nog geen sjablonen — voeg er een toe via de tab "Sjablonen".</span>';
+}
+function renderTplList(){
+  $('#tplList').innerHTML=templates.length?templates.map(t=>
+    `<div class="log-item" style="align-items:center;gap:14px">
+      <div class="lt" style="flex:1;min-width:0"><b>${esc(t.label)}</b><div class="lsub" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.subject)}</div></div>
+      <button class="btn ghost" data-edittpl="${t.id}" style="padding:7px 13px;flex:none">Bewerken</button>
+    </div>`).join(''):'<div class="empty" style="height:150px"><div>Nog geen sjablonen.<br>Klik op "+ Nieuw sjabloon".</div></div>';
 }
 function buildMail(c,tpl){
   const map={
@@ -689,7 +708,7 @@ $('#tplSave').onclick=async()=>{
     ({error:err}=await sb.from('templates').insert(row));
   }
   if(err){toast((err.code==='42P01')?'Maak eerst de sjablonen-tabel aan (SQL, zie chat)':'Opslaan mislukt: '+err.message);return;}
-  await loadTemplates();renderTpls();$('#tplBg').classList.remove('show');toast('Sjabloon opgeslagen');
+  await loadTemplates();renderTpls();renderTplList();$('#tplBg').classList.remove('show');toast('Sjabloon opgeslagen');
 };
 $('#tplDelete').onclick=async()=>{
   if(!editingTplId||String(editingTplId).startsWith('def'))return;
@@ -697,8 +716,10 @@ $('#tplDelete').onclick=async()=>{
   const {error}=await sb.from('templates').delete().eq('id',editingTplId);
   if(error){toast('Verwijderen mislukt: '+error.message);return;}
   if(String(currentTpl)===String(editingTplId))currentTpl=null;
-  await loadTemplates();renderTpls();$('#tplBg').classList.remove('show');toast('Verwijderd');
+  await loadTemplates();renderTpls();renderTplList();$('#tplBg').classList.remove('show');toast('Verwijderd');
 };
+$('#newTplBtn2').onclick=()=>openTplModal(null);
+$('#tplList').onclick=e=>{const b=e.target.closest('[data-edittpl]');if(b)openTplModal(getTpl(b.dataset.edittpl));};
 
 /* ================= send ================= */
 async function sendMail(to,subject,text){
@@ -951,18 +972,15 @@ $('#selAll').onchange=e=>{
 };
 document.addEventListener('click',e=>{if(e.target.id==='clearSel'){selected.clear();renderList();}});
 $('#search').oninput=renderList;$('#fType').onchange=renderList;$('#fYear').onchange=renderList;$('#fPlace').onchange=renderList;$('#fCat').onchange=renderList;
-$('#tpls').onclick=e=>{
-  if(e.target.id==='newTplBtn'){openTplModal(null);return;}
-  const ed=e.target.closest('.tpl-edit');
-  if(ed){openTplModal(getTpl(ed.dataset.edit));return;}
-  const b=e.target.closest('.tpl');if(b&&b.dataset.tpl)applyTemplate(b.dataset.tpl);
-};
+$('#tpls').onclick=e=>{const b=e.target.closest('.tpl');if(b&&b.dataset.tpl)applyTemplate(b.dataset.tpl);};
 $('#mBody').addEventListener('input',()=>{$$('.tpl').forEach(b=>b.classList.remove('on'));currentTpl=null;});
 $$('.tab').forEach(t=>t.onclick=()=>{
   $$('.tab').forEach(x=>x.classList.remove('on'));t.classList.add('on');
   const v=t.dataset.view;
   $('#workView').classList.toggle('hidden',v!=='work');
   $('#logView').classList.toggle('hidden',v!=='log');
+  $('#tplView').classList.toggle('hidden',v!=='tpl');
+  if(v==='tpl')renderTplList();
 });
 
 /* ================= init ================= */

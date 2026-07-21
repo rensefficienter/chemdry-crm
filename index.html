@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 <style>
 :root{
   --bg:#EEF2F0; --surface:#FFFFFF; --surface-2:#F7FAF8;
@@ -393,8 +394,8 @@ textarea.body{min-height:280px;resize:vertical;line-height:1.6;font-size:13.5px}
   <div class="modal">
     <h3>Leads importeren (CSV)</h3>
     <div class="mb">
-      <div class="hint" style="margin-bottom:12px">Kies een CSV-bestand of plak de inhoud hieronder. De kolommen worden automatisch herkend (e-mail, naam, bedrijf, telefoon, adres, postcode, plaats, jaar, label). Regels zonder e-mailadres en dubbele adressen worden overgeslagen.</div>
-      <input type="file" id="impFile" accept=".csv,text/csv" class="inp" style="padding:9px">
+      <div class="hint" style="margin-bottom:12px">Kies een CSV- of ZIP-bestand (een zip met CSV's erin wordt automatisch uitgepakt), of plak de inhoud hieronder. De kolommen worden automatisch herkend (e-mail, naam, bedrijf, telefoon, adres, postcode, plaats, jaar, label). Regels zonder e-mailadres en dubbele adressen worden overgeslagen.</div>
+      <input type="file" id="impFile" accept=".csv,.zip,text/csv,application/zip" class="inp" style="padding:9px">
       <label class="fld" style="margin-top:12px"><span>…of plak hier je CSV</span><textarea class="inp" id="impText" style="min-height:120px;font-family:'IBM Plex Mono',monospace;font-size:12px" placeholder="email,naam,plaats&#10;jan@voorbeeld.nl,Jansen,Amsterdam"></textarea></label>
       <label class="fld" style="margin-top:4px"><span>Label voor deze hele batch (optioneel)</span><input class="inp" id="impLabel" list="labelPresets" placeholder="bijv. Reactivatie 2021"></label>
       <label class="fld" style="margin-top:8px"><span>Toevoegen of vervangen?</span></label>
@@ -942,7 +943,31 @@ $('#importBtn').onclick=()=>{$('#impText').value='';$('#impFile').value='';$('#i
 $('#closeImport').onclick=()=>$('#impBg').classList.remove('show');
 $('#impBg').onclick=e=>{if(e.target===$('#impBg'))$('#impBg').classList.remove('show');};
 $('#impModeSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;$$('#impModeSeg button').forEach(x=>x.classList.remove('on'));b.classList.add('on');impMode=b.dataset.m;previewImport();};
-$('#impFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();rd.onload=()=>{$('#impText').value=rd.result;previewImport();};rd.readAsText(f);};
+$('#impFile').onchange=async e=>{
+  const f=e.target.files[0];if(!f)return;
+  const isZip=/\.zip$/i.test(f.name)||(f.type||'').includes('zip');
+  if(isZip){
+    if(typeof JSZip==='undefined'){toast('ZIP-lezer nog niet geladen — ververs de pagina en probeer opnieuw');return;}
+    try{
+      toast('Zip uitpakken…');
+      const zip=await JSZip.loadAsync(f);
+      const csvNames=Object.keys(zip.files).filter(n=>/\.csv$/i.test(n)&&!zip.files[n].dir&&!n.startsWith('__MACOSX'));
+      if(!csvNames.length){toast('Geen CSV-bestand gevonden in de zip');return;}
+      let combined='',firstHeader=null;
+      for(const n of csvNames){
+        let txt=(await zip.files[n].async('string')).replace(/^﻿/,'').replace(/\r\n/g,'\n').trim();
+        if(!txt)continue;
+        const header=txt.split('\n')[0];
+        if(firstHeader===null){firstHeader=header;combined=txt;}
+        else combined+='\n'+(header===firstHeader?txt.split('\n').slice(1).join('\n'):txt);
+      }
+      $('#impText').value=combined;previewImport();
+      toast(csvNames.length+' CSV'+(csvNames.length>1?'-bestanden':'-bestand')+' uit zip geladen');
+    }catch(err){toast('Zip uitpakken mislukt: '+err.message);}
+  }else{
+    const rd=new FileReader();rd.onload=()=>{$('#impText').value=rd.result;previewImport();};rd.readAsText(f);
+  }
+};
 $('#impText').addEventListener('input',previewImport);
 $('#impLabel').addEventListener('input',previewImport);
 $('#doImport').onclick=async()=>{
